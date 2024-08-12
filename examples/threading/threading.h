@@ -8,20 +8,11 @@
  * the joiner thread.
  */
 struct thread_data{
-    /*
-     * TODO: add other values your thread will need to manage
-     * into this structure, use this structure to communicate
-     * between the start_thread_obtaining_mutex function and
-     * your thread implementation.
-     */
-
-    /**
-     * Set to true if the thread completed with success, false
-     * if an error occurred.
-     */
-    bool thread_complete_success;
+    pthread_mutex_t *mutex;         // Mutex to be obtained and released
+    int wait_to_obtain_ms;          // Time to wait before obtaining the mutex
+    int wait_to_release_ms;         // Time to wait before releasing the mutex
+    bool thread_complete_success;   // Set to true if the thread completed successfully, false if an error occurred
 };
-
 
 /**
 * Start a thread which sleeps @param wait_to_obtain_ms number of milliseconds, then obtains the
