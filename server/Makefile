@@ -4,13 +4,14 @@ SRC = server.c
 OBJ = $(SRC:.c=.o)
 CC = $(CROSS_COMPILE)gcc
 CFLAGS = -Wall -Wextra -Werror
+LDFLAGS = -lpthread
 
 # Default target
 all: $(TARGET)
 
 # Compile the target
 $(TARGET): $(OBJ)
-	$(CC) $(CFLAGS) -o $@ $^
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 # Compile the object files
 %.o: %.c
