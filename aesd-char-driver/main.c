@@ -21,14 +21,16 @@
 int aesd_major =   0; // use dynamic major
 int aesd_minor =   0;
 
-MODULE_AUTHOR("Your Name Here"); /** TODO: fill in your name **/
+MODULE_AUTHOR("vilmursss"); /** TODO: fill in your name **/
 MODULE_LICENSE("Dual BSD/GPL");
 
 struct aesd_dev aesd_device;
 
 int aesd_open(struct inode *inode, struct file *filp)
 {
+    printk(KERN_WARNING "%s: Aesd-char-driver\n", __func__);
     PDEBUG("open");
+    printk(
     /**
      * TODO: handle open
      */
@@ -47,6 +49,7 @@ int aesd_release(struct inode *inode, struct file *filp)
 ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
                 loff_t *f_pos)
 {
+    printk(KERN_WARNING "%s: Aesd-char-driver\n", __func__);
     ssize_t retval = 0;
     PDEBUG("read %zu bytes with offset %lld",count,*f_pos);
     /**
@@ -58,6 +61,7 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
 ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
                 loff_t *f_pos)
 {
+    printk(KERN_WARNING "%s: Aesd-char-driver\n", __func__);
     ssize_t retval = -ENOMEM;
     PDEBUG("write %zu bytes with offset %lld",count,*f_pos);
     /**
@@ -76,7 +80,7 @@ struct file_operations aesd_fops = {
 static int aesd_setup_cdev(struct aesd_dev *dev)
 {
     int err, devno = MKDEV(aesd_major, aesd_minor);
-
+    printk(KERN_WARNING "%s: Aesd-char-driver\n", __func__);
     cdev_init(&dev->cdev, &aesd_fops);
     dev->cdev.owner = THIS_MODULE;
     dev->cdev.ops = &aesd_fops;
@@ -111,12 +115,15 @@ int aesd_init_module(void)
     if( result ) {
         unregister_chrdev_region(dev, 1);
     }
+    
+    printk(KERN_WARNING "%s: Aesd-char-driver\n", __func__);
     return result;
 
 }
 
 void aesd_cleanup_module(void)
 {
+    printk(KERN_WARNING "%s: Aesd-char-driver\n", __func__);
     dev_t devno = MKDEV(aesd_major, aesd_minor);
 
     cdev_del(&aesd_device.cdev);
