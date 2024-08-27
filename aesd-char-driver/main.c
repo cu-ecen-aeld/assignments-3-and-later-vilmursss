@@ -30,7 +30,6 @@ int aesd_open(struct inode *inode, struct file *filp)
 {
     printk(KERN_WARNING "%s: Aesd-char-driver\n", __func__);
     PDEBUG("open");
-    printk(
     /**
      * TODO: handle open
      */
