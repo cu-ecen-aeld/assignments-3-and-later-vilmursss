@@ -55,12 +55,48 @@ int aesd_release(struct inode *inode, struct file *filp)
 ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
                 loff_t *f_pos)
 {
-    ssize_t retval = 0;
-    PDEBUG("read %zu bytes with offset %lld",count,*f_pos);
-    /**
-     * TODO: handle read
-     */
-    return retval;
+    size_t entry_offset_byte;
+    size_t bytes_read = 0;
+    struct aesd_buffer_entry *entry;
+
+    printk(KERN_INFO "aesdchar: Read from device\n");
+
+    // Lock the mutex
+    if (mutex_lock_interruptible(&aesd_device.mutex)) {
+        return -ERESTARTSYS;
+    }
+
+    // Find the starting entry and offset within the entry
+    entry = aesd_circular_buffer_find_entry_offset_for_fpos(&aesd_buf, *f_pos, &entry_offset_byte);
+    if (!entry) {
+        mutex_unlock(&aesd_device.mutex);
+        return 0; // No data available
+    }
+
+    // Copy data to user buffer
+    while (entry && bytes_read < count) {
+        size_t copy_size = entry->size - entry_offset_byte;
+        if (copy_size > count - bytes_read) {
+            copy_size = count - bytes_read;
+        }
+
+        if (copy_to_user(buf + bytes_read, entry->buffptr + entry_offset_byte, copy_size)) {
+            mutex_unlock(&aesd_device.mutex);
+            return -EFAULT;
+        }
+
+        bytes_read += copy_size;
+        *f_pos += copy_size;
+
+        // Move to the next entry
+        entry_offset_byte = 0;
+        entry = aesd_circular_buffer_find_entry_offset_for_fpos(&aesd_buf, *f_pos, &entry_offset_byte);
+    }
+
+    // Unlock the mutex
+    mutex_unlock(&aesd_device.mutex);
+
+    return bytes_read;
 }
 
 ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
@@ -81,22 +117,28 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
         return -EFAULT;
     }
 
+    // Lock the mutex
+    if (mutex_lock_interruptible(&aesd_device.mutex)) {
+        kfree(kbuf);
+        return -ERESTARTSYS;
+    }
+
     for (size_t i = 0; i < count; i++)
     {
         current_buffer = krealloc(current_buffer, current_length + 1, GFP_KERNEL);
         if (!current_buffer) {
             kfree(kbuf);
-            kfree(current_buffer);
             current_buffer = NULL;
+            mutex_unlock(&aesd_device.mutex);
             return -ENOMEM;
         }
 
         current_buffer[current_length] = kbuf[i];
         current_length++;
+        retval++;
 
         if (kbuf[i] == '\n')
         {
-            printk(KERN_WARNING "%s: Written word: %s", __func__, current_buffer);
             struct aesd_buffer_entry write_entry = {
                 .buffptr = current_buffer, .size = current_length};
 
@@ -106,6 +148,8 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
             current_length = 0;
         }
     }
+
+    mutex_unlock(&aesd_device.mutex);
 
     return retval;
 }
