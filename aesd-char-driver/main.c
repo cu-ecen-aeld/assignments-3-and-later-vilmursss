@@ -200,14 +200,14 @@ int aesd_init_module(void)
         unregister_chrdev_region(dev, 1);
     }
     
-    printk(KERN_WARNING "%s: Aesd-char-driver\n", __func__);
+    aesd_circular_buffer_init(&aesd_buf);
+
     return result;
 
 }
 
 void aesd_cleanup_module(void)
 {
-    printk(KERN_WARNING "%s: Aesd-char-driver\n", __func__);
     dev_t devno = MKDEV(aesd_major, aesd_minor);
 
     cdev_del(&aesd_device.cdev);
