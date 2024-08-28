@@ -11,24 +11,31 @@
  *
  */
 
+#include "aesdchar.h"
+#include "aesd-circular-buffer.h"
+
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/printk.h>
 #include <linux/types.h>
-#include <linux/cdev.h>
 #include <linux/fs.h> // file_operations
-#include "aesdchar.h"
+
 int aesd_major =   0; // use dynamic major
 int aesd_minor =   0;
+
+#define MAX_HISTORY 10
 
 MODULE_AUTHOR("vilmursss"); /** TODO: fill in your name **/
 MODULE_LICENSE("Dual BSD/GPL");
 
 struct aesd_dev aesd_device;
 
+struct aesd_circular_buffer aesd_buf;
+static char* current_buffer = NULL;
+static size_t current_length = 0;
+
 int aesd_open(struct inode *inode, struct file *filp)
 {
-    printk(KERN_WARNING "%s: Aesd-char-driver\n", __func__);
     PDEBUG("open");
     /**
      * TODO: handle open
@@ -38,7 +45,6 @@ int aesd_open(struct inode *inode, struct file *filp)
 
 int aesd_release(struct inode *inode, struct file *filp)
 {
-    PDEBUG("release");
     /**
      * TODO: handle release
      */
@@ -48,7 +54,6 @@ int aesd_release(struct inode *inode, struct file *filp)
 ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
                 loff_t *f_pos)
 {
-    printk(KERN_WARNING "%s: Aesd-char-driver\n", __func__);
     ssize_t retval = 0;
     PDEBUG("read %zu bytes with offset %lld",count,*f_pos);
     /**
@@ -60,14 +65,50 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
 ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
                 loff_t *f_pos)
 {
-    printk(KERN_WARNING "%s: Aesd-char-driver\n", __func__);
     ssize_t retval = -ENOMEM;
-    PDEBUG("write %zu bytes with offset %lld",count,*f_pos);
-    /**
-     * TODO: handle write
-     */
+
+    // Allocate memory for the incoming data
+    char* kbuf = kmalloc(count, GFP_KERNEL);
+    if (!kbuf)
+    {
+        return -ENOMEM;
+    }
+
+    // Copy data from user space to kernel space
+    if (copy_from_user(kbuf, buf, count)) {
+        kfree(kbuf);
+        return -EFAULT;
+    }
+
+    for (size_t i = 0; i < count; i++)
+    {
+        current_buffer = krealloc(current_buffer, current_length + 1, GFP_KERNEL);
+        if (!current_buffer) {
+            kfree(kbuf);
+            kfree(current_buffer);
+            current_buffer = NULL;
+            return -ENOMEM;
+        }
+
+        current_buffer[current_length] = kbuf[i];
+        current_length++;
+
+        if (kbuf[i] == '\n')
+        {
+            printk(KERN_WARNING "%s: Written word: %s", __func__, current_buffer);
+            struct aesd_buffer_entry write_entry = {
+                .buffptr = current_buffer, .size = current_length};
+
+            aesd_circular_buffer_add_entry(&aesd_buf, &write_entry);
+
+            current_buffer = NULL;
+            current_length = 0;
+        }
+    }
+
     return retval;
 }
+
 struct file_operations aesd_fops = {
     .owner =    THIS_MODULE,
     .read =     aesd_read,
@@ -79,7 +120,6 @@ struct file_operations aesd_fops = {
 static int aesd_setup_cdev(struct aesd_dev *dev)
 {
     int err, devno = MKDEV(aesd_major, aesd_minor);
-    printk(KERN_WARNING "%s: Aesd-char-driver\n", __func__);
     cdev_init(&dev->cdev, &aesd_fops);
     dev->cdev.owner = THIS_MODULE;
     dev->cdev.ops = &aesd_fops;
@@ -127,14 +167,18 @@ void aesd_cleanup_module(void)
 
     cdev_del(&aesd_device.cdev);
 
-    /**
-     * TODO: cleanup AESD specific poritions here as necessary
-     */
+    for (size_t i = 0; i < MAX_HISTORY; i++) {
+        if (aesd_buf.entry[i].buffptr) {
+            kfree(aesd_buf.entry[i].buffptr);
+        }
+    }
+
+    if (current_buffer) {
+        kfree(current_buffer);
+    }
 
     unregister_chrdev_region(devno, 1);
 }
-
-
 
 module_init(aesd_init_module);
 module_exit(aesd_cleanup_module);
