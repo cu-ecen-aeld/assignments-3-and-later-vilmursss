@@ -18,6 +18,7 @@
 #include <linux/init.h>
 #include <linux/printk.h>
 #include <linux/types.h>
+#include <linux/slab.h>
 #include <linux/fs.h> // file_operations
 
 int aesd_major =   0; // use dynamic major
