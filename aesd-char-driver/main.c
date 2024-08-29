@@ -102,10 +102,11 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
 ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
                 loff_t *f_pos)
 {
-    ssize_t retval = -ENOMEM;
+    ssize_t retval = 0;
+    char* kbuf = NULL;
 
     // Allocate memory for the incoming data
-    char* kbuf = kmalloc(count, GFP_KERNEL);
+    kbuf = kmalloc(count, GFP_KERNEL);
     if (!kbuf)
     {
         return -ENOMEM;
@@ -125,14 +126,14 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 
     for (size_t i = 0; i < count; i++)
     {
-        current_buffer = krealloc(current_buffer, current_length + 1, GFP_KERNEL);
-        if (!current_buffer) {
+        char *new_buffer = krealloc(current_buffer, current_length + 1, GFP_KERNEL);
+        if (!new_buffer) {
             kfree(kbuf);
-            current_buffer = NULL;
             mutex_unlock(&aesd_device.mutex);
             return -ENOMEM;
         }
 
+        current_buffer = new_buffer;
         current_buffer[current_length] = kbuf[i];
         current_length++;
         retval++;
