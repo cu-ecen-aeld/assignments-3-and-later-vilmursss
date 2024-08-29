@@ -18,7 +18,12 @@
 #define PORT 9000
 #define BACKLOG 10
 #define BUFFER_SIZE 1024
-#define FILE_PATH "/var/tmp/aesdsocketdata"
+
+#ifdef USE_AESD_CHAR_DEVICE
+    #define FILE_PATH "/dev/aesdchar"
+#else
+    #define FILE_PATH "/var/tmp/aesdsocketdata"
+#endif
 
 int server_socket = -1;
 pthread_mutex_t file_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -187,7 +192,6 @@ int main(int argc, char *argv[]) {
 
     struct sockaddr_in server_addr, client_addr;
     socklen_t client_addr_len = sizeof(client_addr);
-    pthread_t timestamp_thread;
 
     openlog("aesdsocket", LOG_PID, LOG_USER);
     setup_signal_handlers();
@@ -215,11 +219,14 @@ int main(int argc, char *argv[]) {
         return -1;
     }
 
+#ifndef USE_AESD_CHAR_DEVICE
+    pthread_t timestamp_thread;
     if (pthread_create(&timestamp_thread, NULL, append_timestamps, NULL) != 0) {
         syslog(LOG_ERR, "Failed to create timestamp thread: %s", strerror(errno));
         close(server_socket);
         return -1;
     }
+#endif
 
     while (!exit_flag) {
         int client_socket = accept(server_socket, (struct sockaddr *)&client_addr, &client_addr_len);
@@ -258,7 +265,9 @@ int main(int argc, char *argv[]) {
 
     }
 
+#ifndef USE_AESD_CHAR_DEVICE
     pthread_join(timestamp_thread, NULL);
+#endif
 
     thread_node_t* node;
     while (!SLIST_EMPTY(&head)) {
