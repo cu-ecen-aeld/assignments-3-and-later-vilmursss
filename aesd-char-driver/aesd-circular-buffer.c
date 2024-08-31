@@ -93,6 +93,69 @@ void aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const s
     }
 }
 
+size_t aesd_circular_buffer_size(struct aesd_circular_buffer *buffer)
+{
+    size_t size = 0;
+
+    for (size_t i = 0; i < AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED; i++) {
+        struct aesd_buffer_entry entry = buffer->entry[i];
+        if (!entry.buffptr)
+        {
+            break; 
+        }
+        else
+        {
+            size += entry.size;
+        }
+    }
+
+    return size;
+}
+
+size_t aesd_circular_write_cmd_size(struct aesd_circular_buffer *buffer)
+{
+    size_t size = 0;
+
+    for (size_t i = 0; i < AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED; i++) {
+        struct aesd_buffer_entry entry = buffer->entry[i];
+        if (!entry.buffptr)
+        {
+            break; 
+        }
+        else
+        {
+            size++;
+        }
+    }
+
+    return size;
+}
+
+extern size_t aesd_circular_calculate_cmd_offset(
+    struct aesd_circular_buffer *buffer, uint32_t write_cmd)
+{
+    size_t size = 0;
+
+    if (write_cmd >= AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED)
+    {
+        return size;
+    }
+
+    for (size_t i = 0; i < AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED; i++) {
+        struct aesd_buffer_entry entry = buffer->entry[i];
+        if (!entry.buffptr || i == write_cmd)
+        {
+            break; 
+        }
+        else
+        {
+            size += entry.size;
+        }
+    }
+
+    return size;
+}
+
 /**
 * Initializes the circular buffer described by @param buffer to an empty struct
 */

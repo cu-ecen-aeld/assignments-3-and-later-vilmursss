@@ -14,6 +14,8 @@
 #include <pthread.h>
 #include <time.h>
 #include <sys/queue.h>
+#include <sys/ioctl.h>
+#include "aesd_ioctl.h"
 
 #define PORT 9000
 #define BACKLOG 10
@@ -40,6 +42,11 @@ typedef struct thread_node {
 } thread_node_t;
 
 SLIST_HEAD(thread_list, thread_node) head = SLIST_HEAD_INITIALIZER(head);
+
+// Helper function to parse the AESDCHAR_IOCSEEKTO command
+int parse_seekto_command(const char *buffer, unsigned int *write_cmd, unsigned int *write_cmd_offset) {
+    return sscanf(buffer, "AESDCHAR_IOCSEEKTO:%u,%u", write_cmd, write_cmd_offset) == 2;
+}
 
 void print_file_to_stdout(const char *file_path) {
     FILE *file = fopen(file_path, "r");
@@ -124,31 +131,57 @@ void* handle_client(void* arg) {
     ssize_t bytes_received;
 
     syslog(LOG_INFO, "Accepted connection from %s and socket_id:%d", inet_ntoa(client_addr.sin_addr), client_socket);
-    
+
+    int file_fd = open(FILE_PATH, O_RDWR);
+    if (file_fd == -1) {
+        syslog(LOG_ERR, "Failed to open file: %s", strerror(errno));
+        close(client_socket);
+        return NULL;
+    }
+
     while ((bytes_received = recv(client_socket, buffer, BUFFER_SIZE - 1, 0)) > 0) {
         buffer[bytes_received] = '\0';
 
-        pthread_mutex_lock(&file_mutex);
-        FILE* file = fopen(FILE_PATH, "a+");
-        if (file == NULL) {
-            syslog(LOG_ERR, "Failed to open file: %s", strerror(errno));
-            pthread_mutex_unlock(&file_mutex);
-            close(client_socket);
-            return NULL;
-        }
+        unsigned int write_cmd, write_cmd_offset;
+        if (parse_seekto_command(buffer, &write_cmd, &write_cmd_offset)) {
+            struct aesd_seekto seekto = {
+                .write_cmd = write_cmd,
+                .write_cmd_offset = write_cmd_offset
+            };
 
-        fprintf(file, "%s", buffer);
-        fflush(file);
-
-        if (strchr(buffer, '\n') != NULL) {
-            fseek(file, 0, SEEK_SET);
-            while (fgets(buffer, BUFFER_SIZE, file) != NULL) {
-                send(client_socket, buffer, strlen(buffer), 0);
+            if (ioctl(file_fd, AESDCHAR_IOCSEEKTO, &seekto) == -1) {
+                syslog(LOG_ERR, "Failed to perform ioctl: %s", strerror(errno));
+            } else {
+                // Read the content of the device and send it back over the socket
+                lseek(file_fd, 0, SEEK_SET);
+                ssize_t bytes_read;
+                while ((bytes_read = read(file_fd, buffer, BUFFER_SIZE)) > 0) {
+                    send(client_socket, buffer, bytes_read, 0);
+                }
             }
-        }
+        } else {
+            pthread_mutex_lock(&file_mutex);
+            FILE* file = fdopen(file_fd, "a+");
+            if (file == NULL) {
+                syslog(LOG_ERR, "Failed to open file: %s", strerror(errno));
+                pthread_mutex_unlock(&file_mutex);
+                close(client_socket);
+                return NULL;
+            }
 
-        fclose(file);
-        pthread_mutex_unlock(&file_mutex);
+            fprintf(file, "%s", buffer);
+            fflush(file);
+
+            if (strchr(buffer, '\n') != NULL) {
+                fseek(file, 0, SEEK_SET);
+                while (fgets(buffer, BUFFER_SIZE, file) != NULL) {
+                    send(client_socket, buffer, strlen(buffer), 0);
+                }
+            }
+
+            fclose(file);
+            pthread_mutex_unlock(&file_mutex);
+        }
     }
 
     if (bytes_received == -1) {
@@ -158,6 +191,7 @@ void* handle_client(void* arg) {
     syslog(LOG_INFO, "Closed connection from %s and socket_id:%d", inet_ntoa(client_addr.sin_addr), client_socket);
 
     close(client_socket);
+    close(file_fd);
     return NULL;
 }
 
@@ -188,7 +222,9 @@ int main(int argc, char *argv[]) {
     }
 
     syslog(LOG_ERR, "------------ SERVER STARTING -----------------");
+#ifndef USE_AESD_CHAR_DEVICE
     remove(FILE_PATH);
+#endif
 
     struct sockaddr_in server_addr, client_addr;
     socklen_t client_addr_len = sizeof(client_addr);
